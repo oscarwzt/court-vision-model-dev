@@ -23,3 +23,5 @@ synthetic_images/
 classification_dataset_groupby_env/
 classification_dataset_groupby_env_split/
 video_test_dataset/
+data/
+weights/
