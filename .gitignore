@@ -5,7 +5,7 @@ slurm_outputs/
 yolonas_checkpoints/
 tune_results/
 wandb/
-runs/detect
+runs/
 clips/
 cls_chkpoint_resnet18/
 cls_chkpoint_resnet50/
@@ -25,3 +25,10 @@ classification_dataset_groupby_env_split/
 video_test_dataset/
 data/
 weights/
+basketballDetection-25/
+basketballDetection-27/
+ffmpeg-git-20231128-amd64-static/
+*.mp4
+*.avi
+*.webm
+*.out

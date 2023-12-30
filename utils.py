@@ -56,14 +56,14 @@ def load_checkpoint(model, checkpoint_path, device = "cuda", num_classes=1 ):
     else:
         model.load_state_dict(checkpoint)
       
-def load_resnet18(cls_model_chkpoint_path, num_classes, device = "cuda"):
+def load_resnet18(cls_model_chkpoint_path, num_classes = 1, device = "cuda"):
     cls_model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)    
     load_checkpoint(cls_model, checkpoint_path = cls_model_chkpoint_path, device = device)
     cls_model.to(device)
     cls_model.eval()  
     return cls_model
 
-def load_resnet50(cls_model_chkpoint_path, num_classes, device):
+def load_resnet50(cls_model_chkpoint_path, num_classes = 1, device = "cuda"):
     cls_model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)    
     load_checkpoint(cls_model, checkpoint_path = cls_model_chkpoint_path, device = device)
     cls_model.to(device)
@@ -132,34 +132,38 @@ def get_video_info(video_path):
 
     return cap, fps, frame_width, frame_height
 
-def display_video(video_path):
-    return HTML(f"""
-        <video alt="test" controls width="640" height="360">
-            <source src="{video_path}" type="video/mp4">
-        </video>
-    """)
+def display_video(input_path, width=640, ffmpeg_path='ffmpeg-git-20231128-amd64-static/ffmpeg'):
+    temp_output_path = "temp_" + os.path.basename(input_path)
 
-def display_compressed_video(input_path):
-    output_path = "compressed_" + input_path
-    os.remove(output_path) if os.path.exists(output_path) else None
     try:
         # Use subprocess to safely call FFmpeg
-        subprocess.run(['ffmpeg', '-i', input_path, '-vcodec', 'libx264', output_path], check=True)
+        subprocess.run([ffmpeg_path, '-y', '-i', input_path, '-vcodec', 'libx264', temp_output_path],
+                       stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL,
+                       check=True)
 
-        # Read and encode the compressed video
-        with open(output_path, 'rb') as file:
+        # Overwrite the original file with the compressed one
+        shutil.move(temp_output_path, input_path)
+
+        with open(input_path, 'rb') as file:
             mp4 = file.read()
         data_url = "data:video/mp4;base64," + b64encode(mp4).decode()
 
         # Display video in HTML
         display_html = f"""
-        <video width=800 controls>
+        <video width={width} controls>
             <source src="{data_url}" type="video/mp4">
         </video>
         """
         return HTML(display_html)
+
+
+
     except subprocess.CalledProcessError as e:
         print(f"An error occurred: {e}")
+        # Clean up the temporary file in case of an error
+        if os.path.exists(temp_output_path):
+            os.remove(temp_output_path)
 
 def generateHighlight(video_path,
                       score_timestamps, 

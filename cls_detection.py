@@ -18,16 +18,13 @@ import argparse
 
 
 
-yolo_model_path = "weights/detect_large.pt"
-model = YOLO(yolo_model_path)
-classNames = ['basketball', 'hoop', 'person']
-
 device = "cuda" if torch.cuda.is_available() else "cpu"
 device = "mps" if torch.backends.mps.is_available() else device
 
 def inference_by_batch(yolo_model_path,
                        cls_model_path,
                        video_path, 
+                       classNames,
                        cls_conf_threshold = 0.6,
                        detect_conf_threshold = 0.4,
                        save_result_vid = False, 
