@@ -24,7 +24,7 @@ classification_dataset_groupby_env/
 classification_dataset_groupby_env_split/
 video_test_dataset/
 data/
-weights/
+
 basketballDetection-25/
 basketballDetection-27/
 ffmpeg-git-20231128-amd64-static/
