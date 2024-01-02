@@ -1,9 +1,9 @@
 from ultralytics import YOLO
 
-model = YOLO("yolov8l.pt")
+model = YOLO("yolov8s.pt")
 # model = YOLO("runs/detect/train7/weights/last.pt")
 model.train(data = "basketballDetection-27/data.yaml", 
-            epochs = 500, 
+            epochs = 350, 
             batch = 64, 
             # imgsz = 640, 
             save_period=50,
