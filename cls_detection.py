@@ -1,30 +1,84 @@
 import cv2
 import torch
-from ultralytics import YOLO
 import numpy as np
 import math
 from numpy import random
-from IPython.display import HTML
-import torchvision.models as torch_models
-from base64 import b64encode
 import os
-from IPython.display import Video
 from utils import *
 from torchvision import transforms
 from PIL import Image
 from tqdm import tqdm
-from IPython import display
-import argparse
-
-
+from IPython.display import display
+from IPython.display import Video
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 device = "mps" if torch.backends.mps.is_available() else device
 
-def inference_by_batch(yolo_model_path,
-                       cls_model_path,
+preprocess = transforms.Compose([
+    transforms.ToPILImage(),
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], 
+                        std=[0.229, 0.224, 0.225]),
+])
+
+def convert_images_to_tensor(img_list, preprocess):
+    if isinstance(img_list, np.ndarray):
+        img_list = [img_list]
+    tensor_list = [preprocess(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)) for img in img_list]
+    stacked_tensor = torch.stack(tensor_list, dim=0)
+    return stacked_tensor
+
+def model_predict(cls_model, batch_imgs, device, threshold=0.5):
+    # Move the batch to the specified device
+    batch_imgs = batch_imgs.to(device)
+
+    # Forward pass
+    with torch.no_grad():
+        outputs = cls_model(batch_imgs)
+
+    # Apply sigmoid to output probabilities
+    probabilities = torch.sigmoid(outputs)
+
+    # Convert probabilities to binary predictions based on the threshold
+    predictions = probabilities >= threshold
+
+    return predictions.flatten(), probabilities.flatten()
+
+def predict_hoop_box(img_list, cls_model, preprocess, device, threshold=0.5):
+    batch_imgs = convert_images_to_tensor(img_list, preprocess)
+    predictions, probabilities = model_predict(cls_model, batch_imgs, device, threshold)
+    return predictions.cpu().numpy(), probabilities.cpu().numpy()
+
+def initialize_video_writer(fps, video_dimension, video_path, output_dir, saved_video_name, codec="mp4v"):
+    video_name = video_path.split("/")[-1]
+    video_name = video_name.split(".")[0] + ".mp4"
+
+    if saved_video_name is not None:
+        output_path = saved_video_name if output_dir is None else os.path.join(output_dir, saved_video_name)
+    else:
+        output_path = "inferenced_" + video_name if output_dir is None else os.path.join(output_dir, "inferenced_" + video_name)
+    codec = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, codec, fps, video_dimension)
+    return out, output_path
+
+def initialize_video_capture(video_path, skip_to_sec):
+    cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    if skip_to_sec > 0:
+        cap.set(cv2.CAP_PROP_POS_MSEC, skip_to_sec * 1000)
+        
+    num_skiped_frames = int(skip_to_sec * fps)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) - num_skiped_frames
+    return cap, fps, frame_width, frame_height, total_frames
+    
+
+def inference_by_batch(model,
+                       cls_model,
                        video_path, 
-                       classNames,
                        cls_conf_threshold = 0.6,
                        detect_conf_threshold = 0.4,
                        save_result_vid = False, 
@@ -37,44 +91,17 @@ def inference_by_batch(yolo_model_path,
                        show_score_prob = False,
                        cls_img_size = 112,
                        device = device,
-                       model_type = "resnet50"
                        ):
-    preprocess = transforms.Compose([
-                transforms.Resize((cls_img_size, cls_img_size)),
-                transforms.ToTensor(),
-            ])
-    
-    print("Loading models...")
-    model = YOLO(yolo_model_path)
-    cls_model = load_resnet50(cls_model_path, device=device) if model_type == "resnet50" else load_resnet18(cls_model_path, device=device)
-    print("Models loaded!")
-    
-    cap, fps, frame_width, frame_height = get_video_info(video_path)
-    if skip_to_sec > 0:
-        cap.set(cv2.CAP_PROP_POS_MSEC, skip_to_sec * 1000)
-        
-    num_skiped_frames = int(skip_to_sec * fps)
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) - num_skiped_frames
-    
-    print("Initializing video capture...")
+    cap, fps, frame_width, frame_height, total_frames = initialize_video_capture(video_path, skip_to_sec)
     if save_result_vid:
-        video_name = video_path.split("/")[-1]
-        video_name = video_name.split(".")[0] + ".mp4"
-
-        if saved_video_name is not None:
-            output_path = saved_video_name if output_dir is None else os.path.join(output_dir, saved_video_name)
-        else:
-            output_path = "inferenced_" + video_name if output_dir is None else os.path.join(output_dir, "inferenced_" + video_name)
-            
-        codec = cv2.VideoWriter_fourcc(*'vp09')
-        out = cv2.VideoWriter(output_path, codec, fps, (frame_width,frame_height))
-    
+        out, output_path = initialize_video_writer(fps, (frame_width,frame_height), video_path, output_dir, saved_video_name)
+        
     num_batches = math.ceil(total_frames / batch_size)
 
     results = []
     score_timestamps = []
     
-    count = 0
+    count = 61
     score = 0
     display_prob = [0.0]
     
@@ -96,11 +123,14 @@ def inference_by_batch(yolo_model_path,
             results = model(frames, 
                             stream=False, 
                             verbose = False, 
-                            conf=detect_conf_threshold)
+                            conf=detect_conf_threshold,
+                            device=device)
         else:
             continue
+        
 
-        for c, r in enumerate(results):
+        for c, r in tqdm(enumerate(results)):
+            #print(c)
             img = r.orig_img
             boxes = r.boxes
             cropped_images = []
@@ -119,14 +149,14 @@ def inference_by_batch(yolo_model_path,
                         cropped_img = img[y1:y2, x1:x2]
                         cropped_images.append(cropped_img)
                         
-                if predicted_class == "basketball":
-                    cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                    cv2.putText(img, f'{predicted_class}: {confidence:.3f}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                # if predicted_class == "basketball":
+                #     cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                #     cv2.putText(img, f'{predicted_class}: {confidence:.3f}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
                     
             
             if len(cropped_images) == 0:
                 continue
-            pred, prob = predict_hoop_box_batch(cropped_images, cls_model,  preprocess, device, threshold=cls_conf_threshold)
+            pred, prob = predict_hoop_box(cropped_images, cls_model,  preprocess, device, threshold=cls_conf_threshold)
             if pred.sum() > 0 and count > 60:
                 score += 1
                 count = 0
@@ -136,23 +166,42 @@ def inference_by_batch(yolo_model_path,
                 display_prob = prob
         
             cv2.putText(img, f'Score: {score}', (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
-            if show_score_prob:
-                cv2.putText(img, f'Prob: {max(display_prob):.3f}', (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
+            # if show_score_prob:
+            #     cv2.putText(img, f'Prob: {max(display_prob):.3f}', (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
             if save_result_vid:
                 out.write(img)
+        print("finished inferencing with cls")
         if not ret:
             break
         
     if save_result_vid:
         out.release()
     cap.release()
-    
-
     if display_result:
-        display(Video(output_path, embed=True))
+        display_video(output_path, ffmpeg_path="ffmpeg")
         return score_timestamps, output_path
     else:
         return score_timestamps
+    
+def display_video(input_path, width=640, ffmpeg_path='ffmpeg-git-20231128-amd64-static/ffmpeg'):
+    temp_output_path = "temp_" + os.path.basename(input_path)
+
+    try:
+        # Use subprocess to safely call FFmpeg
+        subprocess.run([ffmpeg_path, '-y', '-i', input_path, '-vcodec', 'libx264', temp_output_path],
+                       stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL,
+                       check=True)
+
+        # Overwrite the original file with the compressed one
+        shutil.move(temp_output_path, input_path)
+
+        display(Video(input_path, embed=True))
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred: {e}")
+        # Clean up the temporary file in case of an error
+        if os.path.exists(temp_output_path):
+            os.remove(temp_output_path)
     
 def inference_by_frame(model, 
                        cls_model,
@@ -166,8 +215,11 @@ def inference_by_frame(model,
                        show_progress = True,
                        skip_to_sec = 0,
                        show_score_prob = False,
-                       device = device
+                       device = device,
+                       preprocess = preprocess
                        ):
+
+    
     cap, fps, frame_width, frame_height = get_video_info(video_path)
     if skip_to_sec > 0:
         cap.set(cv2.CAP_PROP_POS_MSEC, skip_to_sec * 1000)
@@ -184,15 +236,14 @@ def inference_by_frame(model,
             output_path = saved_video_name if output_dir is None else os.path.join(output_dir, saved_video_name)
         else:
             output_path = "inferenced_" + video_name if output_dir is None else os.path.join(output_dir, "inferenced_" + video_name)
-        codec = cv2.VideoWriter_fourcc(*'vp09')
+        codec = cv2.VideoWriter_fourcc(*'mp4v')
         out = cv2.VideoWriter(output_path, codec, fps, (frame_width,frame_height))
     pbar = tqdm(total=total_frames, desc="Processing Frames", unit="frame") if show_progress else None
 
     score_timestamps = []
-    count=0
+    count=61
     score = 0
-    display_prob = [0.0]
-    
+    display_prob = 0.0
     while True:
         ret, img = cap.read()
         frame_start_time = time.time()
@@ -217,30 +268,32 @@ def inference_by_frame(model,
                         if x1 > x2 or y1 > y2:
                             continue
                         else:
-                            _, prediction, prob = predict_hoop_box(img, cls_model, x1, y1, x2, y2, preprocess, device, cls_conf_threshold)
-                            if prediction == 1 and count > 60:
+                            cropped_img = img[y1:y2, x1:x2]
+                            prediction, prob = predict_hoop_box([cropped_img], cls_model, preprocess, device, cls_conf_threshold)
+                            #print(prediction)
+                            if any(prediction == 1) and count > 60:
                                 score += 1
                                 count = 0
-                                display_prob = prob
+                                display_prob = prob[0]
                                 score_timestamps.append((current_time, prob))
 
-                        cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                        #cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
                         cv2.putText(img, f'{predicted_class}: {confidence:.3f}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
                     
-                    if predicted_class == "basketball":
-                        cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                        cv2.putText(img, f'{predicted_class}: {confidence:.3f}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                    # if predicted_class == "basketball":
+                    #     cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    #     cv2.putText(img, f'{predicted_class}: {confidence:.3f}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
             cv2.putText(img, f'Score: {score}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
             if show_score_prob:
-                cv2.putText(img, f'Prob: {display_prob[0]:.3f}', (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
+                # print(display_prob)
+                cv2.putText(img, f'Prob: {display_prob:.3f}', (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
 
             if show_progress:
                 frame_end_time = time.time()  # End time for frame processing
                 time_per_frame = frame_end_time - frame_start_time
                 pbar.set_postfix(time_per_frame=f"{time_per_frame:.3f} sec")
                 pbar.update(1)
-
             
         else:
             break
@@ -251,50 +304,205 @@ def inference_by_frame(model,
     if save_result_vid:
         out.release()
     cap.release()
-    
     if display_result:
-        display(Video(output_path, embed=True))
+        display_video(output_path, ffmpeg_path="ffmpeg")
         return score_timestamps, output_path
     else:
         return score_timestamps
 
+def inference_by_batch_(frames,
+                       model,
+                       cls_model,
+                       preprocess,
+                       cls_conf_threshold = 0.6,
+                       detect_conf_threshold = 0.4,
+                       ):
+    if len(frames) == 0:
+        return 
+    results = model(frames,
+                    stream=False,
+                    verbose=False,
+                    conf=detect_conf_threshold,
+                    device=device)
+    predictions = []
+    for r in results:
+        img = r.orig_img
+        boxes = r.boxes
+        cropped_images = []
+        for box in boxes:
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            confidence = box.conf.item()
+            predicted_class = model.names[int(box.cls)]
+            if predicted_class == "hoop":
+                cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                cv2.putText(img, f'{predicted_class}: {confidence:.3f}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
 
-def main():
-    # Create the parser
-    parser = argparse.ArgumentParser(description='Run inference on a video using a model.')
+                if x1 > x2 or y1 > y2:
+                    continue
+                else:
+                    cropped_img = img[y1:y2, x1:x2]
+                    cropped_images.append(cropped_img)
+                    
+                    
+        if len(cropped_images) == 0:
+            continue
+        pred = predict_hoop_box(cropped_images, cls_model, preprocess, device, threshold=cls_conf_threshold)
+        predictions.append(pred)
+        
+    return predictions
 
-    # Add arguments
-    parser.add_argument('yolo_model_path', help='Path to the model file')
-    parser.add_argument('cls_model_path', help='Path to the classification model file')
-    parser.add_argument('video_path', help='Path to the video file')
-    parser.add_argument('--cls_conf_threshold', type=float, default=0.6, help='Classification confidence threshold')
-    parser.add_argument('--detect_conf_threshold', type=float, default=0.4, help='Detection confidence threshold')
-    parser.add_argument('--save_result_vid', action='store_true', help='Flag to save result video')
-    parser.add_argument('--output_dir', default=None, help='Output directory for saved results')
-    parser.add_argument('--saved_video_name', default=None, help='Name for the saved video')
-    parser.add_argument('--batch_size', type=int, default=128, help='Batch size for processing')
-    parser.add_argument('--display_result', action='store_true', help='Flag to display result')
-    parser.add_argument('--show_progress', action='store_true', help='Flag to show progress')
-    parser.add_argument('--skip_to_sec', type=int, default=0, help='Seconds to skip to in the video')
-    parser.add_argument('--show_score_prob', action='store_true', help='Flag to show score probability')
+def inference_by_frame_(model,
+                       cls_model,
+                       cap, 
+                       score_timestamps,
+                       show_progress = True,
+                       detect_conf_threshold = 0.4,
+                       cls_conf_threshold = 0.5,
+                       show_score_prob = False,
+                       video_writer = None,
+                       device = "cuda"
+                       ):
+    count = 61
+    score = 0
+    display_prob = 0.00
+    
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    frame_range = tqdm(range(total_frames)) if show_progress else range(total_frames)
+    for i in frame_range:
+        ret, img = cap.read()
+        current_time = cap.get(cv2.CAP_PROP_POS_MSEC)
+        count += 1
+        if ret:
+            results = model(img, stream = False, device = device, conf = detect_conf_threshold, verbose = False)
+            
+            for r in results:
+                boxes = r.boxes
 
-    # Parse arguments
-    args = parser.parse_args()
+                for box in boxes:
+                    x1, y1, x2, y2 = box.xyxy[0]
+                    x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2) # convert to int values
+                    confidence = box.conf[0]
+                    predicted_class = model.names[int(box.cls)]
+                    
+                    # If "basketball-hoops" is detected, make a prediction with cls_model
+                    if predicted_class == "hoop":
+                        # Crop the image and convert to PIL Image
+                        # try:
+                        if x1 > x2 or y1 > y2:
+                            continue
+                        else:
+                            cropped_img = img[y1:y2, x1:x2]
+                            prediction, prob = predict_hoop_box([cropped_img], cls_model, preprocess, device, cls_conf_threshold)
+                            #print(prediction)
+                            if any(prediction == 1) and count > 60:
+                                score += 1
+                                count = 0
+                                display_prob = prob[0]
+                                current_time = round(current_time / 1000, 2)
+                                score_timestamps.append((current_time, prob))
 
-    # Call the function with the parsed arguments
-    inference_by_batch(args.yolo_model_path, 
-                       args.cls_model_path,
-                       args.video_path, 
-                       cls_conf_threshold=args.cls_conf_threshold,
-                       detect_conf_threshold=args.detect_conf_threshold,
-                       save_result_vid=args.save_result_vid, 
-                       output_dir=args.output_dir, 
-                       saved_video_name=args.saved_video_name,
-                       batch_size=args.batch_size,
-                       display_result=args.display_result,
-                       show_progress=args.show_progress,
-                       skip_to_sec=args.skip_to_sec,
-                       show_score_prob=args.show_score_prob)
+                        #cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                        cv2.putText(img, f'{predicted_class}: {confidence:.3f}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+                    
+                    # if predicted_class == "basketball":
+                    #     cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    #     cv2.putText(img, f'{predicted_class}: {confidence:.3f}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-if __name__ == "__main__":
-    main()
+            cv2.putText(img, f'Score: {score}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
+            if show_score_prob:
+                # print(display_prob)
+                cv2.putText(img, f'Prob: {display_prob:.3f}', (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
+                
+            if video_writer is not None:
+                video_writer.write(img)
+        else:
+            break
+
+def inference_video(model, 
+                    cls_model,
+                    video_path, 
+                    cls_conf_threshold=0.6,
+                    detect_conf_threshold=0.4,
+                    save_result_vid=False, 
+                    output_dir=None, 
+                    saved_video_name=None,
+                    display_result=False,
+                    show_progress=True,
+                    skip_to_sec=0,
+                    show_score_prob=False,
+                    device=None,
+                    preprocess=preprocess,
+                    batch_mode=False,
+                    batch_size=128,
+                    ffmpeg_path="ffmpeg-git-20231128-amd64-static/ffmpeg",
+                    num_buffer_frames = 20
+                    ):
+    cap, fps, frame_width, frame_height, total_frames = initialize_video_capture(video_path, skip_to_sec)
+    if save_result_vid:
+        out, output_path = initialize_video_writer(fps, (frame_width,frame_height), video_path, output_dir, saved_video_name)
+        
+    buffer_between_made = num_buffer_frames
+    score = 0
+    score_timestamps = []
+    display_prob = 0.0
+    
+    if batch_mode:
+        num_batches = math.ceil(total_frames / batch_size)
+        batch_range = tqdm(range(num_batches)) if show_progress else range(num_batches)
+        for i in batch_range:
+            frames = []
+            for _ in range(batch_size):
+                ret, img = cap.read()
+                if ret:
+                    frames.append(img)
+                else:
+                    break
+                
+            if frames:
+                predictions = inference_by_batch_(frames,
+                                                model,
+                                                cls_model,
+                                                preprocess,
+                                                cls_conf_threshold,
+                                                detect_conf_threshold)
+                for frame_count, (pred_, frame) in enumerate(zip(predictions, frames)):
+                    buffer_between_made += 1
+                    pred, prob = pred_
+                    if any(pred == 1) and buffer_between_made > num_buffer_frames:
+                        score += 1
+                        buffer_between_made = 0
+                        scoring_time = i * batch_size + frame_count
+                        scoring_time = round(scoring_time / fps, 2)
+                        score_timestamps.append((scoring_time, prob))
+                        display_prob = max(prob)
+                        
+                    cv2.putText(frame, f'Score: {score}', (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
+                    if show_score_prob:
+                        cv2.putText(frame, f'Prob: {display_prob:.3f}', (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
+                    if save_result_vid:
+                        out.write(frame)
+            else:
+                continue
+        
+    else:
+        print("inference by frame")
+        inference_by_frame_(model, 
+                            cls_model,
+                            cap, 
+                            score_timestamps,
+                            show_progress,
+                            detect_conf_threshold,
+                            cls_conf_threshold,
+                            show_score_prob,
+                            out,
+                            device)
+        
+        
+
+    if save_result_vid:
+        out.release()
+    cap.release()
+    if display_result:
+        display_video(output_path, ffmpeg_path=ffmpeg_path)
+    return score_timestamps
+    
