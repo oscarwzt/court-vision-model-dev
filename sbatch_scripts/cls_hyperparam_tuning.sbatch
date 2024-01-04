@@ -14,6 +14,6 @@ source /share/apps/anaconda3/2020.07/etc/profile.d/conda.sh;
 conda activate /scratch/zw2688/conda_env/yolonas;
 export PATH=/scratch/zw2688/conda_env/yolonas/bin:$PATH;
 
-cd /scratch/zw2688/DL_project
+cd /scratch/zw2688/Court_Vision_Model_Dev
 export CUDA_VISIBLE_DEVICES=0,1,2
-python /scratch/zw2688/DL_project/hyper_param_tuning.py
+python hyper_param_tuning.py

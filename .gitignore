@@ -32,3 +32,4 @@ ffmpeg-git-20231128-amd64-static/
 *.avi
 *.webm
 *.out
+*.zip
