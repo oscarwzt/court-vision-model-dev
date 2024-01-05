@@ -248,3 +248,41 @@ def download_video(url, save_path, resolution=None):
     #     return mp4_output_path
 
     return video_file_path
+
+def show_feature_map(model, image_path, device = "cuda"):
+    img = Image.open(image_path)
+
+    feature_maps = []
+
+    def hook_function(module, input, output):
+        feature_maps.append(output)
+
+    # Register the hook to the first convolutional layer of the first block of layer1
+    hook = model.layer1[0].conv1.register_forward_hook(hook_function)
+
+    # Load an image
+
+
+    # Preprocess the image
+    preprocess = transforms.Compose([
+        transforms.Resize(112),
+        transforms.ToTensor(),
+    ])
+    img_tensor = preprocess(img).unsqueeze(0).to(device)
+    with torch.no_grad():
+        _ = model(img_tensor)
+
+    # Unregister the hook
+    hook.remove()
+
+    # Visualize the feature maps
+    fm = feature_maps[0].squeeze(0)  # Get the feature maps
+
+    # Plotting
+    fig, axes = plt.subplots(8, 8, figsize=(20, 20))  # Adjust subplot dimensions as needed
+    for i, ax in enumerate(axes.flat):
+        if i < 64:  # Adjust this based on how many feature maps you want to visualize
+            ax.imshow(fm[i].detach().cpu().numpy(), cmap='viridis')
+            ax.axis('off')
+    plt.tight_layout()
+    plt.show()

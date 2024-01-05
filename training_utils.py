@@ -116,7 +116,8 @@ def train(config,
           scheduler=None, 
           device = "cuda",
           model_type = "resnet18",
-          already_split = True
+          already_split = True,
+          model = None
           ):
     
     now = datetime.datetime.now()
@@ -124,13 +125,17 @@ def train(config,
     if not os.path.exists(checkpoint_dir):
         os.makedirs(checkpoint_dir)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if model_type == "resnet18":
-        model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
-    if model_type == "resnet50":
-        model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
+    
+    if not model:
+        if model_type == "resnet18":
+            model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+        if model_type == "resnet50":
+            model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
+            
+        model.fc = nn.Linear(model.fc.in_features, 1)
         
-    model.fc = nn.Linear(model.fc.in_features, 1)
     model.to(device)
+
     train_loader, valid_loader, test_loader = get_data_loaders(config["batch_size"], config["img_size"], root_data_dir, normalize = config["normalize"], already_split = already_split)
     
     if config["optimizer"] == "sgd":
