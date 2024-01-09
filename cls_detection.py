@@ -50,7 +50,7 @@ def predict_hoop_box(img_list, cls_model, preprocess, device, threshold=0.5):
     predictions, probabilities = model_predict(cls_model, batch_imgs, device, threshold)
     return predictions.cpu().numpy(), probabilities.cpu().numpy()
 
-def initialize_video_writer(fps, video_dimension, video_path, output_dir, saved_video_name, codec="mp4v"):
+def initialize_video_writer(fps, video_dimension, video_path, output_dir = None, saved_video_name = None, codec="mp4v"):
     video_name = video_path.split("/")[-1]
     video_name = video_name.split(".")[0] + ".mp4"
 
@@ -62,7 +62,7 @@ def initialize_video_writer(fps, video_dimension, video_path, output_dir, saved_
     out = cv2.VideoWriter(output_path, codec, fps, video_dimension)
     return out, output_path
 
-def initialize_video_capture(video_path, skip_to_sec):
+def initialize_video_capture(video_path, skip_to_sec = 0):
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -277,7 +277,7 @@ def inference_by_frame(model,
                                 display_prob = prob[0]
                                 score_timestamps.append((current_time, prob))
 
-                        #cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                        cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
                         cv2.putText(img, f'{predicted_class}: {confidence:.3f}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
                     
                     # if predicted_class == "basketball":
@@ -334,14 +334,13 @@ def inference_by_batch_(frames,
             confidence = box.conf.item()
             predicted_class = model.names[int(box.cls)]
             if predicted_class == "hoop":
-                cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
-                cv2.putText(img, f'{predicted_class}: {confidence:.3f}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
-
                 if x1 > x2 or y1 > y2:
                     continue
                 else:
                     cropped_img = img[y1:y2, x1:x2]
                     cropped_images.append(cropped_img)
+                cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                cv2.putText(img, f'{predicted_class}: {confidence:.3f}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
                     
                     
         if len(cropped_images) == 0:
@@ -401,12 +400,20 @@ def inference_by_frame_(model,
                                 current_time = round(current_time / 1000, 2)
                                 score_timestamps.append((current_time, prob))
 
-                        #cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                        cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
                         cv2.putText(img, f'{predicted_class}: {confidence:.3f}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
                     
-                    # if predicted_class == "basketball":
-                    #     cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                    #     cv2.putText(img, f'{predicted_class}: {confidence:.3f}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                    if predicted_class == "basketball":
+                        cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                        cv2.putText(img, f'{predicted_class}: {confidence:.3f}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                        
+                    if predicted_class == "made":
+                        cv2.rectangle(img, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                        cv2.putText(img, f'{predicted_class}: {confidence:.3f}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                        
+                    if predicted_class == "person":
+                        cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 255), 2)
+                        cv2.putText(img, f'{predicted_class}: {confidence:.3f}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
 
             cv2.putText(img, f'Score: {score}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
             if show_score_prob:

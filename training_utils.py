@@ -194,7 +194,7 @@ def train(config,
         test_losses[epoch] = test_loss
         
         # Save checkpoint after every epoch
-        if (epoch + 1) % chkpt_interval == 0:
+        if (epoch + 1) % chkpt_interval == 0 or epoch == num_epochs - 1:
             checkpoint = {
                'epoch': epoch + 1,
                 'state_dict': model.state_dict(),
