@@ -4,12 +4,13 @@ import numpy as np
 import math
 from numpy import random
 import os
-from utils import *
+from video_utils import *
 from torchvision import transforms
 from PIL import Image
 from tqdm import tqdm
 from IPython.display import display
 from IPython.display import Video
+from video_utils import display_video
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 device = "mps" if torch.backends.mps.is_available() else device
@@ -50,30 +51,6 @@ def predict_hoop_box(img_list, cls_model, preprocess, device, threshold=0.5):
     predictions, probabilities = model_predict(cls_model, batch_imgs, device, threshold)
     return predictions.cpu().numpy(), probabilities.cpu().numpy()
 
-def initialize_video_writer(fps, video_dimension, video_path, output_dir = None, saved_video_name = None, codec="mp4v"):
-    video_name = video_path.split("/")[-1]
-    video_name = video_name.split(".")[0] + ".mp4"
-
-    if saved_video_name is not None:
-        output_path = saved_video_name if output_dir is None else os.path.join(output_dir, saved_video_name)
-    else:
-        output_path = "inferenced_" + video_name if output_dir is None else os.path.join(output_dir, "inferenced_" + video_name)
-    codec = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, codec, fps, video_dimension)
-    return out, output_path
-
-def initialize_video_capture(video_path, skip_to_sec = 0):
-    cap = cv2.VideoCapture(video_path)
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    
-    if skip_to_sec > 0:
-        cap.set(cv2.CAP_PROP_POS_MSEC, skip_to_sec * 1000)
-        
-    num_skiped_frames = int(skip_to_sec * fps)
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) - num_skiped_frames
-    return cap, fps, frame_width, frame_height, total_frames
     
 
 def inference_by_batch(model,
@@ -183,25 +160,6 @@ def inference_by_batch(model,
     else:
         return score_timestamps
     
-def display_video(input_path, width=640, ffmpeg_path='ffmpeg-git-20231128-amd64-static/ffmpeg'):
-    temp_output_path = "temp_" + os.path.basename(input_path)
-
-    try:
-        # Use subprocess to safely call FFmpeg
-        subprocess.run([ffmpeg_path, '-y', '-i', input_path, '-vcodec', 'libx264', temp_output_path],
-                       stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL,
-                       check=True)
-
-        # Overwrite the original file with the compressed one
-        shutil.move(temp_output_path, input_path)
-
-        display(Video(input_path, embed=True))
-    except subprocess.CalledProcessError as e:
-        print(f"An error occurred: {e}")
-        # Clean up the temporary file in case of an error
-        if os.path.exists(temp_output_path):
-            os.remove(temp_output_path)
     
 def inference_by_frame(model, 
                        cls_model,
