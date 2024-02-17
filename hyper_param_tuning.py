@@ -7,7 +7,7 @@ import torch
 import torchvision.models as models
 import torch.optim as optim
 import torch.nn as nn
-from utils import * 
+from video_utils import * 
 from training_utils import *
 
 data_full_path = "/scratch/zw2688/Court_Vision_Model_Dev/data/classification_dataset_groupby_env_split"      
