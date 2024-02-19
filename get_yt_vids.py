@@ -2,9 +2,10 @@ import cv2
 import os
 from os import listdir
 import random
+from numpy import save
 from pytube import YouTube
-from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
-import moviepy.editor as mp
+
+
 import subprocess
 import argparse
 from urllib.parse import urlparse, parse_qs
@@ -25,8 +26,26 @@ def get_yt_video_id(url):
         print("Invalid YouTube URL")
     return video_id
 
-
 def download_video(url, save_path, resolution=None):
+    yt = YouTube(url)
+    if resolution:
+        video = yt.streams.filter(mime_type="video/mp4", res = resolution).first()
+    else:
+        video = yt.streams.filter(mime_type="video/mp4").order_by("resolution").desc().first()
+
+    video_id = get_yt_video_id(url)
+    video_path = os.path.join(save_path, f"{video_id}.mp4")
+    
+    # if video does not exist, download it
+    if not os.path.isfile(video_path):
+        print(f'Downloading video {video_id}...')
+        video.download(output_path=save_path, filename=video_id)
+    else:
+        print(f'Video {video_id} already exists.')
+    return video_path
+
+
+def download_video(url, save_path, resolution=None, ffmpeg_path = "ffmpeg-git-20240203-amd64-static/ffmpeg"):
     # Define download options for yt-dlp
     ydl_opts = {
         'outtmpl': os.path.join(save_path, '%(id)s.%(ext)s'),
@@ -34,7 +53,8 @@ def download_video(url, save_path, resolution=None):
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',  # Convert to mp4 if necessary
-        }],
+            "ffmpeg_location": f"{ffmpeg_path}"
+        }],  
     }
     
     # If a specific resolution is requested, adjust the format selection
@@ -47,26 +67,18 @@ def download_video(url, save_path, resolution=None):
     # Ensure the save directory exists
     if not os.path.exists(save_path):
         os.makedirs(save_path)
-
+    video_id = get_yt_video_id(url)
+    video_path = os.path.join(save_path, f"{video_id}.mp4")
+    if os.path.isfile(video_path):
+        print(f'Video {video_id} already exists.')
+        return video_path
     # Download the video
     with YoutubeDL(ydl_opts) as ydl:
         video_info = ydl.extract_info(url, download=True)
         video_id = video_info.get('id')
         
-    return os.path.join(save_path, f"{video_id}.mp4")
-#### cut downloaded video to specified interval to test model performance ####
-def cut_video(video_path, output_path,start_time, end_time, fps):
-    # Get the file extension of the input video
-    _, file_extension = os.path.splitext(video_path)
+    return video_path
 
-    # Load the video clip
-    clip = mp.VideoFileClip(video_path).subclip(start_time, end_time)
-
-    # Choose the appropriate codec based on the file extension
-    codec = 'libx264' if file_extension == '.mp4' else 'libvpx-vp9'  # For .mp4 use H.264, for others use VP9
-
-    # Write the trimmed video to the output file with the selected codec
-    clip.write_videofile(output_path, codec=codec, fps = fps)
     
 def extract_frames(video_path, frames_dir, num_frames):
     cap = cv2.VideoCapture(video_path)
