@@ -42,10 +42,44 @@ def get_exit_box(x1, y1, x2, y2, alpha = 0.2, beta = -0.2):
     
     return x1_, y1_, x2_, y2_
 
-def is_in_box(x_center, y_center, x1, y1, x2, y2):
-    if x1 <= x_center <= x2 and y1 <= y_center <= y2:
-        return True
-    return False
+# def is_in_box(x_center, y_center, x1, y1, x2, y2, threshold = 0.3):
+#     if x1 <= x_center <= x2 and y1 <= y_center <= y2:
+#         return True
+#     return False
+
+def is_in_box(x1_ball, y1_ball, x2_ball, y2_ball, x1_box, y1_box, x2_box, y2_box, threshold=0.5):
+    """
+    Checks if the bounding box of a ball is inside another bounding box.
+
+    Parameters:
+    - x1_ball (float): The x-coordinate of the top-left corner of the ball bounding box.
+    - y1_ball (float): The y-coordinate of the top-left corner of the ball bounding box.
+    - x2_ball (float): The x-coordinate of the bottom-right corner of the ball bounding box.
+    - y2_ball (float): The y-coordinate of the bottom-right corner of the ball bounding box.
+    - x1_box (float): The x-coordinate of the top-left corner of the other bounding box.
+    - y1_box (float): The y-coordinate of the top-left corner of the other bounding box.
+    - x2_box (float): The x-coordinate of the bottom-right corner of the other bounding box.
+    - y2_box (float): The y-coordinate of the bottom-right corner of the other bounding box.
+    - threshold (float, optional): The minimum overlap ratio required for the ball to be considered inside the box. Defaults to 0.3.
+
+    Returns:
+    - bool: True if the ball is inside the box, False otherwise.
+    """
+    x_left = max(x1_ball, x1_box)
+    y_top = max(y1_ball, y1_box)
+    x_right = min(x2_ball, x2_box)
+    y_bottom = min(y2_ball, y2_box)
+
+    if x_right < x_left or y_bottom < y_top:
+        return False
+
+    intersection_area = (x_right - x_left) * (y_bottom - y_top)
+    ball_area = (x2_ball - x1_ball) * (y2_ball - y1_ball)
+
+    overlap_ratio = intersection_area / ball_area
+
+    return overlap_ratio >= threshold
+    
 
 def get_center(x1, y1, x2, y2):
     return (x1 + x2) // 2, (y1 + y2) // 2
