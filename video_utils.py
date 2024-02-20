@@ -26,7 +26,7 @@ def get_video_info(video_path):
 
     return cap, fps, frame_width, frame_height
 
-def display_video(input_path, width=640, ffmpeg_path='ffmpeg-git-20240203-amd64-static/ffmpeg'):
+def display_video(input_path, width=640, ffmpeg_path='ffmpeg/ffmpeg'):
     # get input_path's directory
     input_dir = os.path.dirname(input_path)
     temp_output_path = "temp_" + os.path.basename(input_path)
