@@ -36,3 +36,5 @@ ffmpeg-git-20231128-amd64-static/
 ffmpeg-git-20240203-amd64-static/
 *.pt
 *.xml
+ffmpeg/
+full_videos/
