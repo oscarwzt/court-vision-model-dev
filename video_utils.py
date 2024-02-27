@@ -75,6 +75,21 @@ def initialize_video_writer(fps, video_dimension, video_path, output_dir = None,
     return out, output_path
 
 def initialize_video_capture(video_path, skip_to_sec = 0):
+    """
+    Initializes a video capture object and retrieves video properties.
+
+    Parameters:
+    video_path (str): The path to the video file.
+    skip_to_sec (float, optional): The number of seconds to skip in the video. Defaults to 0.
+
+    Returns:
+    cap (cv2.VideoCapture): The video capture object.
+    fps (float): The frames per second of the video.
+    frame_width (int): The width of each frame in pixels.
+    frame_height (int): The height of each frame in pixels.
+    total_frames (int): The total number of frames in the video after skipping.
+
+    """
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
