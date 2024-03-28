@@ -1,4 +1,4 @@
-from ultralytics import YOLO
+from ultralytics_ import YOLO
 
 model = YOLO("yolov8s.pt")
 # model = YOLO("runs/detect/train7/weights/last.pt")

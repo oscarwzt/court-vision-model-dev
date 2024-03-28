@@ -1,4 +1,4 @@
-from ultralytics import YOLO
+from ultralytics_ import YOLO
 from predictor import DetectionPredictor
 import torch
 

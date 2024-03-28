@@ -1,5 +1,5 @@
-from ultralytics.data.augment import LetterBox
-from ultralytics.utils import ops
+from ultralytics_.data.augment import LetterBox
+from ultralytics_.utils import ops
 import torch
 import numpy as np
 

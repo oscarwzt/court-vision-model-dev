@@ -107,7 +107,7 @@ def trim_highlights_from_timestamps(video_path,
                       clip_start_offset = 6, # number of seconds before scoring
                       clip_end_offset = 2,   # number of seconds after scoring
                       output_path = ".",
-                      ffmpeg_path = "ffmpeg-git-20240203-amd64-static/ffmpeg"):
+                      ffmpeg_path = "ffmpeg/ffmpeg"):
     # Create output directory if it doesn't exist
     if not os.path.exists(output_path):
         os.makedirs(output_path)
